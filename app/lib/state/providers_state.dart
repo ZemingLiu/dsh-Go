@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:dsh_client/dsh_client.dart';
+import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../l10n/l10n.dart';
@@ -81,7 +82,8 @@ class CustomProvider {
   final String baseUrl;
   final List<ProviderModelSpec> models;
 
-  /// Extra request headers; kept as they are, not edited here.
+  /// Extra request headers; read back as the engine stores them. The form
+  /// writes them field by field, only when they changed.
   final Map<String, String> headers;
 
   /// Credential reference the key lives under; null for a keyless route.
@@ -205,6 +207,7 @@ class ProviderDraft {
     required this.baseUrl,
     this.apiKey = '',
     this.models = const [],
+    this.headers = const {},
   });
 
   /// Empty: the Base URL's host is used.
@@ -217,6 +220,9 @@ class ProviderDraft {
   /// Empty when editing: keep the stored key.
   final String apiKey;
   final List<ProviderModelSpec> models;
+
+  /// Extra request headers, whole set as the form shows it.
+  final Map<String, String> headers;
 
   String get effectiveName {
     final trimmed = name.trim();
@@ -275,6 +281,46 @@ String? modelIdError(String raw, Iterable<String> taken) {
   if (id.contains(RegExp(r'\s'))) return appL10n.stateProviderModelSpaces;
   if (taken.contains(id)) return appL10n.stateProviderAlreadyAdded;
   return null;
+}
+
+/// An HTTP field name (RFC 9110 token): the same test the engine's Fetch
+/// applies before it stores a profile.
+final _headerName = RegExp(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$");
+
+/// Fetch's rule for a header value: a tab, visible ASCII or an obs-text byte
+/// (0x80-0xFF), one line. The engine applies the same test on write.
+final _headerValue = RegExp(r'[^\t\x20-\x7e\x80-\xff]');
+
+/// Field error for one 请求头 name, or null. [taken] holds the lower-cased
+/// names already in the form; HTTP names are case-insensitive.
+String? headerNameError(String raw, {required Set<String> taken}) {
+  final name = raw.trim();
+  if (name.isEmpty) return appL10n.stateProviderHeaderNameRequired;
+  if (!_headerName.hasMatch(name)) return appL10n.stateProviderHeaderNameInvalid;
+  if (taken.contains(name.toLowerCase())) return appL10n.stateProviderHeaderDuplicate;
+  return null;
+}
+
+/// Field error for one 请求头 value, or null: the engine needs one line it
+/// can put on a request.
+String? headerValueError(String raw) {
+  final value = raw.trim();
+  if (value.isEmpty) return appL10n.stateProviderHeaderValueRequired;
+  if (_headerValue.hasMatch(value)) return appL10n.stateProviderHeaderValueInvalid;
+  return null;
+}
+
+/// Request headers as the form shows them: one row per name, last value wins
+/// when two stored names differ only in case (as `Headers.set` does), in
+/// first-seen order.
+Map<String, String> normalizeStoredHeaders(Map<String, String> stored) {
+  final rows = <String, String>{};
+  final casing = <String, String>{};
+  for (final entry in stored.entries) {
+    final name = casing.putIfAbsent(entry.key.toLowerCase(), () => entry.key);
+    rows[name] = entry.value;
+  }
+  return rows;
 }
 
 /// Lower-case ASCII letters and digits of [text], runs joined by `-`, at most
@@ -565,6 +611,7 @@ class ProviderActions {
           baseUrl: draft.baseUrl,
           apiKeyEnv: draft.apiKey.isEmpty ? null : keyRef,
           models: draft.models,
+          headers: draft.headers,
         ),
       );
     } else {
@@ -578,6 +625,9 @@ class ProviderActions {
         // A keyless route gets its reference once a key is typed.
         apiKeyEnv: existing.apiKeyEnv == null && draft.apiKey.isNotEmpty ? keyRef : null,
         models: draft.models,
+        // Left as stored when the form did not touch them; an emptied set
+        // drops the field.
+        headers: mapEquals(draft.headers, existing.headers) ? null : draft.headers,
         expectedRevision: before?.revision,
       );
     }

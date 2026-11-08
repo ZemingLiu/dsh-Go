@@ -90,6 +90,10 @@ Finder _field(String label) => find.descendant(
   matching: find.byType(TextField),
 );
 
+/// A 自定义 Headers row's field by its hint; [at] counts the rows from the top.
+Finder _headerField(String hint, [int at = 0]) =>
+    find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == hint).at(at);
+
 Future<void> _type(WidgetTester tester, String label, String text) async {
   await tester.enterText(_field(label), text);
   await tester.pump();
@@ -104,6 +108,16 @@ class _DelayedDiscovery extends FakeProviderBackend {
     return response.future;
   }
 }
+
+/// A route with two stored request headers, for the 自定义 Headers rows.
+const _withHeaders = ProviderProfile(
+  route: 'custom-mygw',
+  displayName: 'My Gateway',
+  api: 'openai-completions',
+  baseUrl: 'https://gw.example.com/v1',
+  models: [ProviderModelSpec(id: 'qwen3-coder')],
+  headers: {'x-opencode-session': 's-1', 'CF-Access-Client-Id': 'abc'},
+);
 
 void main() {
   testWidgets('late discovery preserves an endpoint edited while loading', (tester) async {
@@ -402,6 +416,117 @@ void main() {
       await settle(tester);
       expect(backend.stored['CUSTOM_CLAUDE_RELAY_API_KEY'], 'sk-relay');
       expect(vault.data, isEmpty);
+    });
+  });
+
+  group('headers', () {
+    /// The form filled up to a model row, so 保存 is about the headers only.
+    Future<void> readyToSave(WidgetTester tester, FakeProviderBackend backend) async {
+      await _open(tester, backend);
+      await _type(tester, 'Base URL', 'https://gw.example.com/v1');
+      await _type(tester, 'API Key', 'sk-1');
+      await tester.tap(find.text('手动添加'));
+      await settle(tester);
+      await tester.enterText(find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField)), 'm1');
+      await tester.tap(find.widgetWithText(FilledButton, '添加'));
+      await settle(tester);
+    }
+
+    testWidgets('a typed row is saved with the profile', (tester) async {
+      final backend = FakeProviderBackend();
+      await readyToSave(tester, backend);
+      await tester.tap(find.text('添加 Header'));
+      await settle(tester);
+      await tester.enterText(_headerField('名称'), ' x-opencode-session ');
+      await tester.enterText(_headerField('值'), ' s-1 ');
+      await tester.tap(find.text('保存'));
+      await settle(tester);
+      expect(backend.calls.firstWhere((c) => c.$1 == 'create').$2['headers'], {'x-opencode-session': 's-1'});
+      expect(find.text('result: custom-gw-example'), findsOneWidget);
+    });
+
+    testWidgets('a row left blank is dropped, not saved as an empty header', (tester) async {
+      final backend = FakeProviderBackend();
+      await readyToSave(tester, backend);
+      await tester.tap(find.text('添加 Header'));
+      await settle(tester);
+      await tester.tap(find.text('保存'));
+      await settle(tester);
+      expect(backend.calls.firstWhere((c) => c.$1 == 'create').$2.containsKey('headers'), isFalse);
+    });
+
+    testWidgets('a half-filled row is refused under the list, nothing written', (tester) async {
+      final backend = FakeProviderBackend();
+      await readyToSave(tester, backend);
+      await tester.tap(find.text('添加 Header'));
+      await settle(tester);
+      await tester.enterText(_headerField('名称'), 'X-Team');
+      await tester.tap(find.text('保存'));
+      await settle(tester);
+      expect(find.text('填写这个请求头的值'), findsOneWidget);
+      expect(backend.callNames, isNot(contains('create')));
+    });
+
+    testWidgets('names are checked for characters and repeats', (tester) async {
+      final backend = FakeProviderBackend();
+      await readyToSave(tester, backend);
+      for (var i = 0; i < 2; i++) {
+        await tester.tap(find.text('添加 Header'));
+        await settle(tester);
+      }
+      await tester.enterText(_headerField('名称', 0), 'X-Team');
+      await tester.enterText(_headerField('值', 0), '1');
+      await tester.enterText(_headerField('名称', 1), 'x team');
+      await tester.enterText(_headerField('值', 1), '2');
+      await tester.tap(find.text('保存'));
+      await settle(tester);
+      expect(find.text('名称只能包含 HTTP 标头名字符'), findsOneWidget);
+
+      await tester.enterText(_headerField('名称', 1), 'x-team');
+      await tester.tap(find.text('保存'));
+      await settle(tester);
+      expect(find.text('这个名称已经填过'), findsOneWidget);
+      expect(backend.callNames, isNot(contains('create')));
+
+      await tester.tap(find.byTooltip('移除请求头').last);
+      await settle(tester);
+      await tester.tap(find.text('保存'));
+      await settle(tester);
+      expect(backend.calls.firstWhere((c) => c.$1 == 'create').$2['headers'], {'X-Team': '1'});
+    });
+
+    testWidgets('edit shows the stored rows and leaves untouched ones out of the write', (tester) async {
+      final backend = FakeProviderBackend(profiles: const [_withHeaders]);
+      await _open(tester, backend, existing: CustomProvider.fromProfile(_withHeaders));
+      expect(tester.widget<TextField>(_headerField('名称', 0)).controller!.text, 'x-opencode-session');
+      expect(tester.widget<TextField>(_headerField('值', 0)).controller!.text, 's-1');
+      expect(tester.widget<TextField>(_headerField('名称', 1)).controller!.text, 'CF-Access-Client-Id');
+
+      await tester.tap(find.text('保存'));
+      await settle(tester);
+      final update = backend.calls.firstWhere((c) => c.$1 == 'update').$2;
+      expect(update.containsKey('headers'), isFalse, reason: 'untouched headers are not restated');
+      expect(find.text('result: custom-mygw'), findsOneWidget);
+    });
+
+    testWidgets('removing a row writes the rest', (tester) async {
+      final backend = FakeProviderBackend(profiles: const [_withHeaders]);
+      await _open(tester, backend, existing: CustomProvider.fromProfile(_withHeaders));
+      await tester.tap(find.byTooltip('移除请求头').first);
+      await settle(tester);
+      await tester.tap(find.text('保存'));
+      await settle(tester);
+      expect(backend.calls.firstWhere((c) => c.$1 == 'update').$2['headers'], {'CF-Access-Client-Id': 'abc'});
+    });
+
+    testWidgets('typing in an existing row is an unsaved edit', (tester) async {
+      final backend = FakeProviderBackend(profiles: const [_withHeaders]);
+      await _open(tester, backend, existing: CustomProvider.fromProfile(_withHeaders));
+      await tester.enterText(_headerField('值', 0), 's-2');
+      await tester.pump();
+      await tester.binding.handlePopRoute();
+      await settle(tester);
+      expect(find.text('放弃修改？'), findsOneWidget);
     });
   });
 

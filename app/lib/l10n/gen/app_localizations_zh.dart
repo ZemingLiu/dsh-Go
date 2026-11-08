@@ -5939,6 +5939,28 @@ class L10nZh extends L10n {
   String get engineProviderCompatibleProtocol => '兼容协议';
 
   @override
+  String get engineProviderCustomRequest => '自定义请求';
+
+  @override
+  String get engineProviderHeaders => '自定义 Headers';
+
+  @override
+  String get engineProviderAddHeader => '添加 Header';
+
+  @override
+  String get engineProviderHeaderNameHint => '名称';
+
+  @override
+  String get engineProviderHeaderValueHint => '值';
+
+  @override
+  String get engineProviderHeaderRemove => '移除请求头';
+
+  @override
+  String get engineProviderHeadersNote =>
+      '请求头以明文保存在引擎设置里，不参与日志脱敏；敏感凭据请仍用 API Key。User-Agent 由引擎自己发送，同名请求头会被它覆盖。获取模型用的是已保存的请求头。';
+
+  @override
   String get engineProviderKeepStoredKey => '已保存，留空则不修改';
 
   @override
@@ -16714,6 +16736,21 @@ class L10nZh extends L10n {
 
   @override
   String get stateProviderAlreadyAdded => '已经添加过';
+
+  @override
+  String get stateProviderHeaderNameRequired => '填写请求头名称';
+
+  @override
+  String get stateProviderHeaderNameInvalid => '名称只能包含 HTTP 标头名字符';
+
+  @override
+  String get stateProviderHeaderValueRequired => '填写这个请求头的值';
+
+  @override
+  String get stateProviderHeaderValueInvalid => '值只能是单行，只含 HTTP 标头能发送的字符';
+
+  @override
+  String get stateProviderHeaderDuplicate => '这个名称已经填过';
 
   @override
   String get stateProviderConflict => '渠道刚被改过，返回后重试';

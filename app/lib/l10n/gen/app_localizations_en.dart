@@ -6262,6 +6262,28 @@ class L10nEn extends L10n {
   String get engineProviderCompatibleProtocol => 'Compatible protocol';
 
   @override
+  String get engineProviderCustomRequest => 'Custom request';
+
+  @override
+  String get engineProviderHeaders => 'Custom Headers';
+
+  @override
+  String get engineProviderAddHeader => 'Add Header';
+
+  @override
+  String get engineProviderHeaderNameHint => 'Name';
+
+  @override
+  String get engineProviderHeaderValueHint => 'Value';
+
+  @override
+  String get engineProviderHeaderRemove => 'Remove header';
+
+  @override
+  String get engineProviderHeadersNote =>
+      'Headers are saved as plain text in the engine settings and aren’t covered by log redaction; keep credentials in API Key. The engine sends User-Agent itself, so a same-named header is overwritten. Fetching models uses the saved headers.';
+
+  @override
   String get engineProviderKeepStoredKey => 'Saved. Leave blank to keep it';
 
   @override
@@ -17584,6 +17606,21 @@ class L10nEn extends L10n {
 
   @override
   String get stateProviderAlreadyAdded => 'Already added';
+
+  @override
+  String get stateProviderHeaderNameRequired => 'Enter a header name';
+
+  @override
+  String get stateProviderHeaderNameInvalid => 'Names can only use HTTP header-name characters';
+
+  @override
+  String get stateProviderHeaderValueRequired => 'Enter this header’s value';
+
+  @override
+  String get stateProviderHeaderValueInvalid => 'Values must be one line of characters a header can carry';
+
+  @override
+  String get stateProviderHeaderDuplicate => 'This name is already used';
 
   @override
   String get stateProviderConflict => 'Provider changed. Go back and try again.';

@@ -91,6 +91,29 @@ void main() {
       expect(modelIdError('moonshotai/kimi-k2', const ['glm-4.6']), isNull);
     });
 
+    test('请求头 names and values', () {
+      expect(headerNameError('', taken: {}), '填写请求头名称');
+      expect(headerNameError(' X-Team ', taken: {}), isNull);
+      expect(headerNameError('CF-Access-Client-Id', taken: {}), isNull);
+      expect(headerNameError('x team', taken: {}), '名称只能包含 HTTP 标头名字符');
+      expect(headerNameError('x-team:', taken: {}), '名称只能包含 HTTP 标头名字符');
+      expect(headerNameError('X-Team', taken: {'x-team'}), '这个名称已经填过');
+      expect(headerValueError(''), '填写这个请求头的值');
+      expect(headerValueError('  abc  '), isNull);
+      expect(headerValueError('a\nb'), '值只能是单行，只含 HTTP 标头能发送的字符');
+      expect(headerValueError('a\rb'), '值只能是单行，只含 HTTP 标头能发送的字符');
+      expect(headerValueError('中文'), '值只能是单行，只含 HTTP 标头能发送的字符');
+      expect(headerValueError('a\tb'), isNull, reason: 'a tab is one line Fetch can send');
+    });
+
+    test('stored 请求头 rows: one per name, last value wins, first casing kept', () {
+      expect(normalizeStoredHeaders(const {}), isEmpty);
+      expect(normalizeStoredHeaders(const {'X-Team': 'a', 'x-team': 'b', 'CF-Access-Client-Id': 'c'}), {
+        'X-Team': 'b',
+        'CF-Access-Client-Id': 'c',
+      });
+    });
+
     test('token counts read short', () {
       expect(formatTokens(262144), '256K');
       expect(formatTokens(200000), '200K');
@@ -332,6 +355,57 @@ void main() {
           );
       expect(backend.stored['CUSTOM_MYGW_API_KEY'], 'sk-rotated');
       expect(vault.data, {'custom-mygw': 'sk-rotated'});
+    });
+
+    test('create sends the typed 请求头 with the profile', () async {
+      container = start(FakeProviderBackend());
+      await container.read(customProvidersProvider.future);
+      await container.read(providerActionsProvider).save(
+        const ProviderDraft(
+          name: 'Header GW',
+          api: ProviderApi.openaiCompletions,
+          baseUrl: 'https://gw.example.com/v1',
+          apiKey: 'sk-gw-new',
+          models: [ProviderModelSpec(id: 'm1')],
+          headers: {'x-opencode-session': 's-1'},
+        ),
+      );
+      expect(backend.calls.firstWhere((c) => c.$1 == 'create').$2['headers'], {'x-opencode-session': 's-1'});
+    });
+
+    test('edit: unchanged 请求头 stay stored; a changed set replaces them', () async {
+      const withHeaders = ProviderProfile(
+        route: 'custom-hdr',
+        displayName: 'Header GW',
+        api: 'openai-completions',
+        baseUrl: 'https://gw.example.com/v1',
+        models: [ProviderModelSpec(id: 'm1')],
+        headers: {'x-opencode-session': 's-1'},
+      );
+      container = start(FakeProviderBackend(profiles: const [withHeaders]));
+      final p = (await container.read(customProvidersProvider.future))!.byId('custom-hdr')!;
+      ProviderDraft draftFor(Map<String, String> headers) => ProviderDraft(
+        name: p.displayName,
+        api: p.api!,
+        baseUrl: p.baseUrl,
+        models: p.models,
+        headers: headers,
+      );
+
+      await container.read(providerActionsProvider).save(draftFor(p.headers), existing: p);
+      expect(
+        backend.calls.lastWhere((c) => c.$1 == 'update').$2.containsKey('headers'),
+        isFalse,
+        reason: 'untouched headers are not restated',
+      );
+
+      await container.read(providerActionsProvider).save(draftFor(const {}), existing: p);
+      expect(
+        backend.calls.lastWhere((c) => c.$1 == 'update').$2['headers'],
+        isEmpty,
+        reason: 'an emptied set drops the field',
+      );
+      expect(backend.profiles.first.headers, isEmpty);
     });
 
     test('delete removes the route, its key, and the phone copy', () async {

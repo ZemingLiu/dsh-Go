@@ -11114,6 +11114,48 @@ abstract class L10n {
   /// **'兼容协议'**
   String get engineProviderCompatibleProtocol;
 
+  /// No description provided for @engineProviderCustomRequest.
+  ///
+  /// In zh, this message translates to:
+  /// **'自定义请求'**
+  String get engineProviderCustomRequest;
+
+  /// No description provided for @engineProviderHeaders.
+  ///
+  /// In zh, this message translates to:
+  /// **'自定义 Headers'**
+  String get engineProviderHeaders;
+
+  /// No description provided for @engineProviderAddHeader.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加 Header'**
+  String get engineProviderAddHeader;
+
+  /// No description provided for @engineProviderHeaderNameHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'名称'**
+  String get engineProviderHeaderNameHint;
+
+  /// No description provided for @engineProviderHeaderValueHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'值'**
+  String get engineProviderHeaderValueHint;
+
+  /// No description provided for @engineProviderHeaderRemove.
+  ///
+  /// In zh, this message translates to:
+  /// **'移除请求头'**
+  String get engineProviderHeaderRemove;
+
+  /// No description provided for @engineProviderHeadersNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'请求头以明文保存在引擎设置里，不参与日志脱敏；敏感凭据请仍用 API Key。User-Agent 由引擎自己发送，同名请求头会被它覆盖。获取模型用的是已保存的请求头。'**
+  String get engineProviderHeadersNote;
+
   /// No description provided for @engineProviderKeepStoredKey.
   ///
   /// In zh, this message translates to:
@@ -30793,6 +30835,36 @@ abstract class L10n {
   /// In zh, this message translates to:
   /// **'已经添加过'**
   String get stateProviderAlreadyAdded;
+
+  /// No description provided for @stateProviderHeaderNameRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'填写请求头名称'**
+  String get stateProviderHeaderNameRequired;
+
+  /// No description provided for @stateProviderHeaderNameInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'名称只能包含 HTTP 标头名字符'**
+  String get stateProviderHeaderNameInvalid;
+
+  /// No description provided for @stateProviderHeaderValueRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'填写这个请求头的值'**
+  String get stateProviderHeaderValueRequired;
+
+  /// No description provided for @stateProviderHeaderValueInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'值只能是单行，只含 HTTP 标头能发送的字符'**
+  String get stateProviderHeaderValueInvalid;
+
+  /// No description provided for @stateProviderHeaderDuplicate.
+  ///
+  /// In zh, this message translates to:
+  /// **'这个名称已经填过'**
+  String get stateProviderHeaderDuplicate;
 
   /// No description provided for @stateProviderConflict.
   ///

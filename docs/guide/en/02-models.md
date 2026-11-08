@@ -45,7 +45,8 @@ Providers come in three groups:
 1. Under **Compatible protocol**, choose OpenAI, Anthropic or Responses, as the service's docs say.
 2. Enter the Base URL and API key. A new provider needs an API key. **Name** is optional; it defaults to the domain in the URL.
 3. Tap **Fetch models** and select the models you want. If the service lists none, tap **Add manually** and enter the **Model ID**.
-4. Add at least one model, then tap **Save**.
+4. If the service needs fixed request headers (a gateway's session header, say), tap **Add Header** under **Custom request** and fill in the name and value. Headers are stored as plain text in the engine settings; keep credentials in the API key.
+5. Add at least one model, then tap **Save**.
 
 Your new models now appear in **Choose model**.
 

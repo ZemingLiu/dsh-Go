@@ -88,6 +88,10 @@ List<Override> _withNewChatDefaults(List<Override> overrides) {
   ];
 }
 
+/// A 自定义 Headers row's field by hint; [at] counts rows from the top.
+Finder _hinted(String hint, [int at = 0]) =>
+    find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == hint).at(at);
+
 void main() {
   // Everything at once: DeepSeek, both subscriptions (one signed in), three
   // custom providers in three states.
@@ -131,7 +135,7 @@ void main() {
 
   goldenTall(
     'provider_form_filled',
-    height: 1480,
+    height: 1760,
     () => const ProviderFormPage(),
     overrides: () => providerOverrides(
       FakeProviderBackend()
@@ -145,6 +149,21 @@ void main() {
       await tester.tap(find.text('获取模型'));
       await settle(tester);
       await tester.tap(find.text('添加 3 个模型'));
+      await settle(tester);
+      // Two 自定义 Headers rows, as a gateway that routes by session header.
+      var row = 0;
+      for (final (name, value) in [
+        ('x-opencode-session', 'sess-1a2b3c4d'),
+        ('X-Team', 'ops'),
+      ]) {
+        await tester.tap(find.text('添加 Header'));
+        await settle(tester);
+        await tester.enterText(_hinted('名称', row), name);
+        await tester.enterText(_hinted('值', row), value);
+        await settle(tester);
+        row++;
+      }
+      FocusManager.instance.primaryFocus?.unfocus();
       await settle(tester);
     },
   );

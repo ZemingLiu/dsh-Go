@@ -43,7 +43,7 @@ class ProviderFormPage extends ConsumerStatefulWidget {
 }
 
 /// The fields that can carry an error, in page order.
-enum _F { baseUrl, key, models }
+enum _F { baseUrl, key, headers, models }
 
 class _ProviderFormPageState extends ConsumerState<ProviderFormPage> {
   late final _name = TextEditingController(text: widget.existing?.displayName ?? '');
@@ -51,6 +51,19 @@ class _ProviderFormPageState extends ConsumerState<ProviderFormPage> {
   final _key = TextEditingController();
   late ProviderApi _api = widget.existing?.api ?? ProviderApi.openaiCompletions;
   late List<ProviderModelSpec> _models = [...?widget.existing?.models];
+
+  /// 自定义 Headers rows, one name/value pair each, in form order.
+  late final List<_Header> _headers = [
+    for (final entry in normalizeStoredHeaders(widget.existing?.headers ?? const {}).entries)
+      _Header(entry.key, entry.value),
+  ];
+
+  /// Rows whose fields the last save refused.
+  Set<int> _badHeaders = const {};
+
+  /// Header rows edit through their fields' `onChanged`, so a row added while
+  /// the form is open still counts as an edit.
+  final _headersChanged = ValueNotifier(0);
 
   /// The provider being edited; set after a create whose key failed, so the
   /// next 「保存」 only retries what is missing.
@@ -65,6 +78,9 @@ class _ProviderFormPageState extends ConsumerState<ProviderFormPage> {
   /// Discovery's failure, under the models card.
   String? _modelsError;
 
+  /// The first problem in the 请求头 rows, under the last row.
+  String? _headersError;
+
   /// 「已补全为 …」 under the Base URL, after discovery added `/v1`.
   String? _baseUrlNote;
 
@@ -75,7 +91,7 @@ class _ProviderFormPageState extends ConsumerState<ProviderFormPage> {
 
   bool get _isEdit => _editing != null;
 
-  late final Listenable _edits = Listenable.merge([_name, _baseUrl, _key]);
+  late final Listenable _edits = Listenable.merge([_name, _baseUrl, _key, _headersChanged]);
   late String _clean;
 
   String _signature() => jsonEncode([
@@ -84,6 +100,9 @@ class _ProviderFormPageState extends ConsumerState<ProviderFormPage> {
     _key.text,
     _api.name,
     [for (final model in _models) model.toJson()],
+    [
+      for (final header in _headers) [header.name.text, header.value.text],
+    ],
   ]);
 
   @override
@@ -97,6 +116,10 @@ class _ProviderFormPageState extends ConsumerState<ProviderFormPage> {
     _name.dispose();
     _baseUrl.dispose();
     _key.dispose();
+    _headersChanged.dispose();
+    for (final header in _headers) {
+      header.dispose();
+    }
     super.dispose();
   }
 
@@ -112,9 +135,13 @@ class _ProviderFormPageState extends ConsumerState<ProviderFormPage> {
   void _showErrors(Map<_F, String> errors) {
     setState(() => _errors = errors);
     if (errors.isEmpty) return;
-    final first = _F.values.firstWhere(errors.containsKey);
+    _scrollTo(_F.values.firstWhere(errors.containsKey));
+  }
+
+  /// Brings [field] between the top bar and the bottom bar unless it is there.
+  void _scrollTo(_F field) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final target = _fieldKeys[first]!.currentContext;
+      final target = _fieldKeys[field]!.currentContext;
       if (target == null || !target.mounted) return;
       // Already in view between the top bar and the bottom bar: stay put.
       final box = target.findRenderObject();
@@ -215,6 +242,56 @@ class _ProviderFormPageState extends ConsumerState<ProviderFormPage> {
 
   void _remove(ProviderModelSpec model) => setState(() => _models = [..._models]..remove(model));
 
+  void _addHeader() => setState(() => _headers.add(_Header()));
+
+  void _removeHeader(int at) => setState(() {
+    final removed = _headers.removeAt(at);
+    _badHeaders = const {};
+    _headersError = null;
+    // The row's fields leave the tree with this frame; free them after it.
+    WidgetsBinding.instance.addPostFrameCallback((_) => removed.dispose());
+  });
+
+  /// A field of a header row was typed in: the form is dirty, and a refusal
+  /// it is about no longer shows.
+  void _headerEdited() {
+    _headersChanged.value++;
+    if (_headersError != null || _badHeaders.isNotEmpty) {
+      setState(() {
+        _headersError = null;
+        _badHeaders = const {};
+      });
+    }
+  }
+
+  /// The rows as the profile stores them: trimmed, rows left blank dropped,
+  /// names unique regardless of case. The first problem, if any, comes back
+  /// with the rows it is about, for the fields' outlines.
+  ({Map<String, String> headers, String? error, Set<int> bad}) _readHeaders() {
+    final headers = <String, String>{};
+    final taken = <String>{};
+    final bad = <int>{};
+    String? error;
+    void fail(int row, String message) {
+      bad.add(row);
+      error ??= message;
+    }
+
+    for (var i = 0; i < _headers.length; i++) {
+      final name = _headers[i].name.text.trim();
+      final value = _headers[i].value.text.trim();
+      if (name.isEmpty && value.isEmpty) continue;
+      final nameError = headerNameError(name, taken: taken);
+      final valueError = headerValueError(value);
+      if (nameError != null) fail(i, nameError);
+      if (valueError != null) fail(i, valueError);
+      if (nameError != null || valueError != null) continue;
+      taken.add(name.toLowerCase());
+      headers[name] = value;
+    }
+    return (headers: headers, error: error, bad: bad);
+  }
+
   /// 模型设置; what comes back replaces the row and is saved with the form.
   Future<void> _editModel(ProviderModelSpec model) async {
     FocusManager.instance.primaryFocus?.unfocus();
@@ -230,20 +307,27 @@ class _ProviderFormPageState extends ConsumerState<ProviderFormPage> {
   Future<void> _save() async {
     FocusManager.instance.primaryFocus?.unfocus();
     final key = normalizeProviderKey(_key.text);
+    final typed = _readHeaders();
     final errors = <_F, String>{
       _F.baseUrl: ?baseUrlError(_baseUrl.text),
       _F.key: ?providerKeyError(key, required: !_isEdit),
       if (_models.isEmpty) _F.models: context.l10n.engineProviderNeedModel,
     };
-    setState(() => _formError = null);
+    setState(() {
+      _formError = null;
+      _badHeaders = typed.bad;
+      _headersError = typed.error;
+    });
     _showErrors(errors);
-    if (errors.isNotEmpty) return;
+    if (typed.error != null && errors.isEmpty) _scrollTo(_F.headers);
+    if (errors.isNotEmpty || typed.error != null) return;
     final draft = ProviderDraft(
       name: _name.text,
       api: _api,
       baseUrl: normalizeBaseUrl(_baseUrl.text, _api),
       apiKey: key,
       models: _models,
+      headers: typed.headers,
     );
     setState(() => _saving = true);
     try {
@@ -260,6 +344,7 @@ class _ProviderFormPageState extends ConsumerState<ProviderFormPage> {
             api: draft.api,
             baseUrl: draft.baseUrl,
             models: draft.models,
+            headers: draft.headers,
             apiKeyEnv: deriveProviderKeyRef(id),
           );
         }
@@ -379,6 +464,66 @@ class _ProviderFormPageState extends ConsumerState<ProviderFormPage> {
                 ),
               ],
             ),
+            SettingsSection(
+              title: l10n.engineProviderCustomRequest,
+              footer: Text(l10n.engineProviderHeadersNote),
+              children: [
+                FormFieldGroup(
+                  children: [
+                    Padding(
+                      key: _fieldKeys[_F.headers],
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          FormFieldLabel(
+                            l10n.engineProviderHeaders,
+                            trailing: FormSmallButton(
+                              label: l10n.engineProviderAddHeader,
+                              onPressed: busy ? null : _addHeader,
+                            ),
+                          ),
+                          if (_headers.isNotEmpty) ...[
+                            const SizedBox(height: FormFieldLabel.gap),
+                            for (var i = 0; i < _headers.length; i++) ...[
+                              if (i > 0) const SizedBox(height: 8),
+                              _HeaderRow(
+                                key: ObjectKey(_headers[i]),
+                                row: _headers[i],
+                                invalid: _badHeaders.contains(i),
+                                onChanged: _headerEdited,
+                                onRemove: busy ? null : () => _removeHeader(i),
+                              ),
+                            ],
+                          ],
+                          SmoothSize(
+                            duration: AppMotion.of(context, AppMotion.standard),
+                            alignment: Alignment.topLeft,
+                            child: _headersError == null
+                                ? const SizedBox(width: double.infinity)
+                                : Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      FormFieldLabel.indent,
+                                      6,
+                                      FormFieldLabel.indent,
+                                      0,
+                                    ),
+                                    child: Semantics(
+                                      liveRegion: true,
+                                      child: Text(
+                                        _headersError!,
+                                        style: theme.textTheme.bodySmall?.copyWith(color: colors.danger),
+                                      ),
+                                    ),
+                                  ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
             Padding(
               key: _fieldKeys[_F.models],
               padding: kSettingsGroupMargin,
@@ -441,6 +586,83 @@ class _ProviderFormPageState extends ConsumerState<ProviderFormPage> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// One 自定义 Headers row: the two fields keep their text while rows above
+/// them are added or removed.
+class _Header {
+  _Header([String name = '', String value = ''])
+    : name = TextEditingController(text: name),
+      value = TextEditingController(text: value);
+
+  final TextEditingController name;
+  final TextEditingController value;
+
+  void dispose() {
+    name.dispose();
+    value.dispose();
+  }
+}
+
+/// A header's name and value, then remove; a row the last save refused keeps
+/// the red outline, its reason under the list.
+class _HeaderRow extends StatelessWidget {
+  const _HeaderRow({
+    super.key,
+    required this.row,
+    required this.invalid,
+    required this.onChanged,
+    required this.onRemove,
+  });
+
+  final _Header row;
+  final bool invalid;
+  final VoidCallback onChanged;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final colors = DshColors.of(context);
+    final outline = invalid ? const SizedBox.shrink() : null;
+    // Phone width: a header name like `x-opencode-session` does not fit beside
+    // its value, so the two fields stack and remove sits on their right.
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            children: [
+              TextField(
+                controller: row.name,
+                autocorrect: false,
+                enableSuggestions: false,
+                textInputAction: TextInputAction.next,
+                onChanged: (_) => onChanged(),
+                decoration: InputDecoration(hintText: l10n.engineProviderHeaderNameHint, error: outline),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: row.value,
+                autocorrect: false,
+                enableSuggestions: false,
+                textInputAction: TextInputAction.done,
+                onChanged: (_) => onChanged(),
+                decoration: InputDecoration(hintText: l10n.engineProviderHeaderValueHint, error: outline),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        IconButton(
+          tooltip: l10n.engineProviderHeaderRemove,
+          visualDensity: VisualDensity.compact,
+          color: colors.textTertiary,
+          icon: const Icon(AppIcons.delete, size: 20),
+          onPressed: onRemove,
+        ),
+      ],
     );
   }
 }

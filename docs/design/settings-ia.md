@@ -150,7 +150,7 @@
 |---|---|---|---|---|---|
 | 官方 DeepSeek › 账号页 | 4 | `ui/providers/providers_page.dart:144` | — | 中 | — |
 | 订阅：ChatGPT / Claude 登录、退出 | 4–5 | `subscription_sheet.dart`、`subscription_page.dart` | 引擎 | 低 | 当前主机 |
-| 添加渠道：名称、协议、Base URL、API Key、获取模型 | 4 进页，5 改 | `provider_form_page.dart` | 引擎 `llm-pi-ai.providers.<route>` + credentials | 中 | 当前主机 |
+| 添加渠道：名称、协议、Base URL、API Key、请求头、获取模型 | 4 进页，5 改 | `provider_form_page.dart` | 引擎 `llm-pi-ai.providers.<route>` + credentials | 中 | 当前主机 |
 | 渠道详情：测试连接、编辑、删除 | 5 | `provider_detail_page.dart` | 同上 | 低 | 当前主机 |
 | 模型设置：名称、上下文长度、最大输出、输入类型、思考、可选档位 | 6 | `provider_model_page.dart` | 同上 | 低 | 当前主机 |
 | 账号：登录、退出、去充值、用量明细 | 4 | `ui/account/account_page.dart:196,386` | 引擎账号 API | 中 | 本机 |

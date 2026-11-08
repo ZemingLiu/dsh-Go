@@ -282,6 +282,29 @@ void main() {
       expect(() => client.updateProvider('custom-mygw'), throwsArgumentError);
     });
 
+    test('updateProvider replaces the headers map; an empty one drops the field', () async {
+      final client = await connect();
+      await client.updateProvider(
+        'custom-mygw',
+        headers: const {'x-opencode-session': 's-1', 'CF-Access-Client-Id': 'abc'},
+      );
+      expect(mutations.single['ops'], [
+        {
+          'op': 'set',
+          'path': ['providers', 'custom-mygw', 'headers'],
+          'value': {'x-opencode-session': 's-1', 'CF-Access-Client-Id': 'abc'},
+        },
+      ]);
+      mutations.clear();
+      await client.updateProvider('custom-mygw', headers: const {});
+      expect(mutations.single['ops'], [
+        {
+          'op': 'unset',
+          'path': ['providers', 'custom-mygw', 'headers'],
+        },
+      ]);
+    });
+
     test('removeProvider unsets the route', () async {
       await (await connect()).removeProvider('custom-mygw', expectedRevision: 4);
       expect(mutations.single, {
